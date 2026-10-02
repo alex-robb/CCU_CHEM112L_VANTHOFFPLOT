@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Van't Hoff Plot Generator</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js">
+function formatRegressionValue(value) {
+  if (value === 0) return "0";
+  return Number(value).toPrecision(2);
+}
+</script>
+<style>
+  :root {
+    --border: #d0d7de;
+    --text: #24292f;
+    --muted: #57606a;
+    --bg: #f6f8fa;
+    --card: #ffffff;
+    --accent: #0969da;
+    --danger: #cf222e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+  }
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 28px 18px 50px;
+  }
+  h1 { margin: 0 0 8px; font-size: 28px; }
+  .subtitle { color: var(--muted); margin: 0 0 24px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  h2 { font-size: 19px; margin: 0 0 14px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+  }
+  th, td {
+    border-bottom: 1px solid var(--border);
+    padding: 8px;
+    text-align: left;
+  }
+  th { background: var(--bg); font-size: 17px; font-weight: 700; }
+  input {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 16px;
+  }
+  button {
+    border: 0;
+    border-radius: 6px;
+    padding: 9px 14px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--accent);
+    color: white;
+    margin-right: 7px;
+  }
+  button.secondary { background: #6e7781; }
+  button.danger { background: var(--danger); }
+  button:hover { opacity: .9; }
+  .results {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+  }
+  .result {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    background: #fff;
+  }
+  .result-label {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 5px;
+  }
+  .result-value {
+    font-size: 18px;
+    font-weight: 600;
+    word-break: break-word;
+  }
+  .equation {
+    font-family: "Courier New", monospace;
+    font-size: 16px;
+  }
+  #chartWrap {
+    position: relative;
+    height: 620px;
+  }
+  .note {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .error {
+    color: var(--danger);
+    font-weight: 600;
+    margin-top: 10px;
+  }
+  .remove-btn {
+    background: var(--danger);
+    padding: 6px 10px;
+    margin: 0;
+  }
+  @media (max-width: 600px) {
+    #chartWrap { height: 400px; }
+    th:nth-child(3), td:nth-child(3) { display: none; }
+  }
+</style>
+</head>
+
+<body>
+<div class="container">
+  <h1>Van't Hoff Plot Generator</h1>
+  <p class="subtitle">
+    Enter temperature in °C and K<sub>sp</sub> values. The program converts temperature to Kelvin,
+    calculates 1/T and ln(K<sub>sp</sub>), performs linear regression, and generates the van't Hoff plot.
+  </p>
+
+  <div class="card">
+    <h2>Experimental Data</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Temperature (°C)</th>
+          <th>K<sub>sp</sub></th>
+          <th>Temperature (K)</th>
+          <th>1/T (K⁻¹)</th>
+          <th>ln(K<sub>sp</sub>)</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="dataBody"></tbody>
+    </table>
+
+    <button onclick="addRow()">+ Add Data Point</button>
+    <button class="secondary" onclick="calculate()">Update Plot</button>
+    <button class="secondary" onclick="loadExample()">Load Example</button>
+    <button class="danger" onclick="clearData()">Clear All</button>
+
+    <div id="error" class="error"></div>
+  </div>
+
+  <div class="card">
+    <h2>Van't Hoff Plot</h2>
+    <button class="secondary" onclick="exportPlot()">Export Plot as PNG</button>
+    <p class="note">The exported image includes the regression equation, R², ΔH°, and ΔS°.</p>
+    <div id="chartWrap">
+      <canvas id="vanthoffChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Regression Results</h2>
+    <div class="results">
+      <div class="result">
+        <div class="result-label">Slope, m</div>
+        <div class="result-value" id="slope">—</div>
+      </div>
+
+      <div class="result">
+        <div class="result-label">Intercept, b</div>
+        <div class="result-value" id="intercept">—</div>
+      </div>
+
+      <div class="result">
+        <div class="result-label">R²</div>
+        <div class="result-value" id="r2">—</div>
+      </div>
+
+      <div class="result">
+        <div class="result-label">ΔH°</div>
+        <div class="result-value" id="enthalpy">—</div>
+      </div>
+
+      <div class="result">
+        <div class="result-label">ΔS°</div>
+        <div class="result-value" id="entropy">—</div>
+      </div>
+
+      <div class="result">
+        <div class="result-label">Regression equation</div>
+        <div class="result-value equation" id="equation">—</div>
+      </div>
+    </div>
+
+    <p class="note">
+      Van't Hoff equation:
+      ln(K<sub>sp</sub>) = −ΔH°/R × (1/T) + ΔS°/R.
+      Therefore ΔH° = −mR and ΔS° = bR, using R = 8.314462618 J mol⁻¹ K⁻¹.
+      The units of ΔH° are J/mol and ΔS° are J/(mol·K).
+    </p>
+  </div>
+</div>
+
+<script>
+const R = 8.314462618;
+let chart = null;
+
+function addRow(temp = "", ksp = "") {
+  const tbody = document.getElementById("dataBody");
+  const tr = document.createElement("tr");
+
+  tr.innerHTML = `
+    <td>
+      <input type="number" step="any" class="temp" value="${temp}" placeholder="e.g. 25">
+    </td>
+    <td>
+      <input type="number" step="any" min="0" class="ksp" value="${ksp}" placeholder="e.g. 1.2e-5">
+    </td>
+    <td class="kelvin">—</td>
+    <td class="inverseT">—</td>
+    <td class="lnKsp">—</td>
+    <td>
+      <button class="remove-btn" onclick="removeRow(this)">×</button>
+    </td>
+  `;
+
+  tbody.appendChild(tr);
+
+  tr.querySelectorAll("input").forEach(input => {
+    input.addEventListener("input", calculate);
+  });
+}
+
+function removeRow(button) {
+  button.closest("tr").remove();
+  calculate();
+}
+
+function getData() {
+  const rows = [...document.querySelectorAll("#dataBody tr")];
+  const data = [];
+
+  rows.forEach(row => {
+    const temp = parseFloat(row.querySelector(".temp").value);
+    const ksp = parseFloat(row.querySelector(".ksp").value);
+
+    if (Number.isFinite(temp) && Number.isFinite(ksp) && ksp > 0) {
+      const kelvin = temp + 273.15;
+      const inverseT = 1 / kelvin;
+      const lnKsp = Math.log(ksp);
+
+      row.querySelector(".kelvin").textContent = kelvin.toFixed(3);
+      row.querySelector(".inverseT").textContent = inverseT.toExponential(5);
+      row.querySelector(".lnKsp").textContent = lnKsp.toFixed(6);
+
+      data.push({ temp, ksp, kelvin, inverseT, lnKsp });
+    } else {
+      row.querySelector(".kelvin").textContent = "—";
+      row.querySelector(".inverseT").textContent = "—";
+      row.querySelector(".lnKsp").textContent = "—";
+    }
+  });
+
+  return data;
+}
+
+function linearRegression(data) {
+  const n = data.length;
+  const xMean = data.reduce((sum, p) => sum + p.inverseT, 0) / n;
+  const yMean = data.reduce((sum, p) => sum + p.lnKsp, 0) / n;
+
+  let numerator = 0;
+  let denominator = 0;
+
+  data.forEach(p => {
+    numerator += (p.inverseT - xMean) * (p.lnKsp - yMean);
+    denominator += Math.pow(p.inverseT - xMean, 2);
+  });
+
+  if (denominator === 0) {
+    throw new Error("The temperatures must not all be identical.");
+  }
+
+  const slope = numerator / denominator;
+  const intercept = yMean - slope * xMean;
+
+  let ssRes = 0;
+  let ssTot = 0;
+
+  data.forEach(p => {
+    const predicted = slope * p.inverseT + intercept;
+    ssRes += Math.pow(p.lnKsp - predicted, 2);
+    ssTot += Math.pow(p.lnKsp - yMean, 2);
+  });
+
+  const r2 = ssTot === 0 ? 1 : 1 - ssRes / ssTot;
+
+  return { slope, intercept, r2 };
+}
+
+function formatNumber(value, digits = 5) {
+  if (!Number.isFinite(value)) return "—";
+  return value.toFixed(digits);
+}
+
+function calculate() {
+  const error = document.getElementById("error");
+  error.textContent = "";
+
+  const data = getData();
+
+  if (data.length < 2) {
+    clearResults();
+    drawChart([], null);
+    if (data.length > 0) {
+      error.textContent = "Enter at least two valid data points.";
+    }
+    return;
+  }
+
+  try {
+    const regression = linearRegression(data);
+    const { slope, intercept, r2 } = regression;
+
+    const deltaH = -slope * R;
+    const deltaS = intercept * R;
+
+    document.getElementById("slope").textContent =
+      slope.toExponential(3);
+
+    document.getElementById("intercept").textContent =
+      intercept.toFixed(3);
+
+    document.getElementById("r2").textContent =
+      r2.toFixed(4);
+
+    document.getElementById("enthalpy").textContent =
+      `${(deltaH / 1000).toFixed(3)} kJ/mol`;
+
+    document.getElementById("entropy").textContent =
+      `${deltaS.toFixed(3)} J/(mol·K)`;
+
+    const sign = intercept >= 0 ? "+" : "−";
+    document.getElementById("equation").textContent =
+      `ln(Ksp) = ${Number(slope.toPrecision(3))}(1/T) ${sign} ${Number(Math.abs(intercept).toPrecision(3))}`;
+
+    drawChart(data, regression);
+  } catch (err) {
+    error.textContent = err.message;
+    clearResults();
+    drawChart(data, null);
+  }
+}
+
+function clearResults() {
+  document.getElementById("slope").textContent = "—";
+  document.getElementById("intercept").textContent = "—";
+  document.getElementById("r2").textContent = "—";
+  document.getElementById("enthalpy").textContent = "—";
+  document.getElementById("entropy").textContent = "—";
+  document.getElementById("equation").textContent = "—";
+}
+
+
+const exportLabelsPlugin = {
+  id: "exportLabels",
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    const dataset = chart.data.datasets[0];
+
+    ctx.save();
+
+    if (chart._vanthoffRegression) {
+      const r = chart._vanthoffRegression;
+      const lines = [
+        `ln(Ksp) = ${Number(r.slope.toPrecision(3))}(1/T) ${r.intercept >= 0 ? "+" : "−"} ${Number(Math.abs(r.intercept).toPrecision(3))}`,
+        `R² = ${r.r2.toFixed(4)}`,
+        `ΔH° = ${(-r.slope * R / 1000).toFixed(2)} kJ/mol`,
+        `ΔS° = ${(r.intercept * R).toFixed(1)} J/(mol·K)`
+      ];
+
+      const fontSize = 24;
+      const lineHeight = 34;
+      const padding = 18;
+      const boxWidth = 430;
+      const boxHeight = lines.length * lineHeight + padding * 2;
+
+      // Upper-right corner of the plotting region.
+      const x = chart.chartArea.right - boxWidth - 12;
+      const y = chart.chartArea.top + 12;
+
+      ctx.font = `bold ${fontSize}px Arial`;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+
+      ctx.fillStyle = "rgba(255,255,255,0.94)";
+      ctx.strokeStyle = "#222222";
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(x, y, boxWidth, boxHeight);
+      ctx.strokeRect(x, y, boxWidth, boxHeight);
+
+      ctx.fillStyle = "#111111";
+      lines.forEach((line, i) => {
+        ctx.fillText(line, x + padding, y + padding + i * lineHeight);
+      });
+    }
+
+    ctx.restore();
+  }
+};
+
+function drawChart(data, regression) {
+  const ctx = document.getElementById("vanthoffChart").getContext("2d");
+
+  if (chart) {
+    chart.destroy();
+  }
+
+  const scatterData = data.map(p => ({
+    x: p.inverseT,
+    y: p.lnKsp
+  }));
+
+  const datasets = [
+    {
+      label: "Experimental data",
+      data: scatterData,
+      showLine: false,
+      pointRadius: 7,
+      pointHoverRadius: 9,
+      borderColor: "#006F71",
+      backgroundColor: "#006F71",
+      pointBorderColor: "#006F71",
+      pointBackgroundColor: "#006F71",
+      borderWidth: 2
+    }
+  ];
+
+  if (regression && data.length >= 2) {
+    const xValues = data.map(p => p.inverseT);
+    const minX = Math.min(...xValues);
+    const maxX = Math.max(...xValues);
+
+    datasets.push({
+      label: "Linear regression",
+      data: [
+        {
+          x: minX,
+          y: regression.slope * minX + regression.intercept
+        },
+        {
+          x: maxX,
+          y: regression.slope * maxX + regression.intercept
+        }
+      ],
+      type: "line",
+      pointRadius: 0,
+      borderColor: "#006F71",
+      backgroundColor: "#006F71",
+      borderWidth: 3,
+      fill: false
+    });
+  }
+
+  chart = new Chart(ctx, {
+    type: "scatter",
+    plugins: [exportLabelsPlugin],
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: "nearest",
+        intersect: false
+      },
+      plugins: {
+        title: {
+          display: true,
+          text: "Van't Hoff Plot",
+          font: { size: 28, weight: "bold" },
+          padding: { top: 8, bottom: 18 }
+        },
+        legend: {
+          display: true,
+          labels: {
+            font: { size: 20, weight: "bold" },
+            padding: 18
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const x = context.parsed.x;
+              const y = context.parsed.y;
+              return `1/T = ${x.toExponential(3)}, ln(Ksp) = ${y.toFixed(5)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: "linear",
+          title: {
+            display: true,
+            text: "1/T (K⁻¹)",
+            font: { size: 23, weight: "bold" }
+          },
+          ticks: {
+            font: { size: 20, weight: "600" },
+            callback: value => Number(value).toExponential(2)
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: "ln(Ksp)",
+            font: { size: 23, weight: "bold" }
+          },
+          ticks: {
+            font: { size: 20, weight: "600" }
+          }
+        }
+      }
+    }
+  });
+
+  chart._vanthoffSourceData = data;
+  chart._vanthoffRegression = regression;
+}
+
+function exportPlot() {
+  if (!chart) {
+    alert("Please enter at least two valid data points first.");
+    return;
+  }
+
+  // Render labels/statistics at the moment of export.
+  chart.update("none");
+
+  const link = document.createElement("a");
+  const timestamp = new Date().toISOString().slice(0, 10);
+  link.download = `vanthoff_plot_${timestamp}.png`;
+  link.href = chart.toBase64Image("image/png", 1);
+  link.click();
+}
+
+function clearData() {
+  document.getElementById("dataBody").innerHTML = "";
+  clearResults();
+  document.getElementById("error").textContent = "";
+  drawChart([], null);
+
+  for (let i = 0; i < 3; i++) {
+    addRow();
+  }
+}
+
+function loadExample() {
+  document.getElementById("dataBody").innerHTML = "";
+
+  const example = [
+    [10, 2.50e-5],
+    [20, 3.20e-5],
+    [30, 4.15e-5],
+    [40, 5.30e-5],
+    [50, 6.70e-5]
+  ];
+
+  example.forEach(row => addRow(row[0], row[1]));
+  calculate();
+}
+
+// Start with three blank rows.
+for (let i = 0; i < 3; i++) {
+  addRow();
+}
+</script>
+</body>
+</html>
