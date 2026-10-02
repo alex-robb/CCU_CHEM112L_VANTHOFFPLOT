@@ -1,2 +1,2 @@
 # CCU_CHEM112L_VANTHOFFPLOT
-V'ant Hoff Plotter
+Van't Hoff Plotter
